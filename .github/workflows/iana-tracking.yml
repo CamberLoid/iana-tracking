@@ -17,6 +17,7 @@ env:
   TRACK_BRANCH: tracking
   TARGETS_FILE: ./.targets
   UPDATED_COUNT: 0
+  AMENDING: ""
 
 
 jobs:
@@ -34,14 +35,16 @@ jobs:
           set -euo pipefail
           git fetch origin
           if git ls-remote --exit-code --heads origin "${TRACK_BRANCH}" >/dev/null 2>&1; then
-            git checkout "${TRACK_BRANCH}"
-          else
-            if git rev-parse --verify "${BASE_BRANCH}" >/dev/null 2>&1; then
-              git checkout -b "${TRACK_BRANCH}" "${BASE_BRANCH}"
-            else
-              git checkout -b "${TRACK_BRANCH}" "origin/${BASE_BRANCH}"
-            fi
+            git branch -D "${TRACK_BRANCH}"
+            # 总是覆盖
+            export AMENDING="--amend -f"
           fi
+          if git rev-parse --verify "${BASE_BRANCH}" >/dev/null 2>&1; then
+            git checkout -b "${TRACK_BRANCH}" "${BASE_BRANCH}"
+          else
+            git checkout -b "${TRACK_BRANCH}" "origin/${BASE_BRANCH}"
+          fi
+          
 
       - name: Verify targets and script exist
         shell: bash
@@ -71,6 +74,6 @@ jobs:
             exit 0
           fi
           ts="$(date -u +'%Y%m%d')"
-          git commit -m "chore(iana-etc): update iana-etc artifacts @ ${ts}"
+          git commit -m "chore(iana-etc): update iana-etc artifacts @ ${ts}" $AMENDING
           git push origin "${TRACK_BRANCH}"
 
