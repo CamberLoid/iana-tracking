@@ -1,0 +1,76 @@
+name: IANA etc tracking
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iana-tracking
+  cancel-in-progress: false
+
+env:
+  BASE_BRANCH: master
+  TRACK_BRANCH: tracking
+  TARGETS_FILE: ./.targets
+  UPDATED_COUNT: 0
+
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tracking branch exists (create from master if missing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin
+          if git ls-remote --exit-code --heads origin "${TRACK_BRANCH}" >/dev/null 2>&1; then
+            git checkout "${TRACK_BRANCH}"
+          else
+            if git rev-parse --verify "${BASE_BRANCH}" >/dev/null 2>&1; then
+              git checkout -b "${TRACK_BRANCH}" "${BASE_BRANCH}"
+            else
+              git checkout -b "${TRACK_BRANCH}" "origin/${BASE_BRANCH}"
+            fi
+          fi
+
+      - name: Verify targets and script exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f "${TARGETS_FILE}" ]] || { echo "::error::${TARGETS_FILE} not found"; exit 1; }
+          [[ -f "./update.sh" ]] || { echo "::error::./update.sh not found"; exit 1; }
+          chmod +x ./update.sh
+
+      - name: Run tracker script
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./update.sh
+          echo "UPDATED_COUNT=${UPDATED_COUNT}"
+
+      - name: Commit & push if changed
+        if: env.UPDATED_COUNT != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name  "Camber Huang[Bot]"
+          git config user.email "231435243+CamberLoid@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No staged changes, skip commit."
+            exit 0
+          fi
+          ts="$(date -u +'%Y%m%d')"
+          git commit -m "chore(iana-etc): update iana-etc artifacts @ ${ts}"
+          git push origin "${TRACK_BRANCH}"
+
